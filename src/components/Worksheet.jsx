@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const Worksheet = () => {
   const [name, setName] = useState('');
@@ -6,6 +6,13 @@ const Worksheet = () => {
   const [score, setScore] = useState(null);
   const [showNameAlert, setShowNameAlert] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [highScores, setHighScores] = useState([]);
+  const [showHighScores, setShowHighScores] = useState(false);
+  const [isLoadingScores, setIsLoadingScores] = useState(false);
+  const [isSavingScore, setIsSavingScore] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+
+  const API_BASE_URL = 'http://localhost:3001/api';
 
   const questions = [
     { id: 1, question: "17 rounded off to the nearest 10 is..", options: [10, 20, 17], correct: 20 },
@@ -22,6 +29,59 @@ const Worksheet = () => {
     { id: 12, question: "999 rounded off to the nearest 10 is..", options: [990, 1000, 909], correct: 1000 }
   ];
 
+  // Fetch high scores from backend
+  const fetchHighScores = async () => {
+    setIsLoadingScores(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/highscores`);
+      if (response.ok) {
+        const scores = await response.json();
+        setHighScores(scores);
+      } else {
+        console.error('Failed to fetch high scores');
+        setHighScores([]);
+      }
+    } catch (error) {
+      console.error('Error fetching high scores:', error);
+      setHighScores([]);
+    } finally {
+      setIsLoadingScores(false);
+    }
+  };
+
+  // Save score to backend
+  const saveScore = async (playerName, playerScore) => {
+    setIsSavingScore(true);
+    setSaveMessage('');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/scores`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: playerName,
+          score: playerScore
+        }),
+      });
+
+      if (response.ok) {
+        setSaveMessage('Score saved successfully! 🎉');
+        // Refresh high scores
+        fetchHighScores();
+      } else {
+        const errorData = await response.json();
+        setSaveMessage(`Failed to save score: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('Error saving score:', error);
+      setSaveMessage('Failed to save score. Please check your internet connection.');
+    } finally {
+      setIsSavingScore(false);
+    }
+  };
+
   const handleAnswerSelect = (questionId, answer) => {
     if (!isSubmitted) {
       setAnswers(prev => ({
@@ -31,10 +91,9 @@ const Worksheet = () => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       setShowNameAlert(true);
-      setTimeout(() => setShowNameAlert(false), 3000);
       return;
     }
 
@@ -47,6 +106,9 @@ const Worksheet = () => {
 
     setScore(correctCount);
     setIsSubmitted(true);
+    
+    // Save score to backend
+    await saveScore(name.trim(), correctCount);
   };
 
   const handleReset = () => {
@@ -54,6 +116,14 @@ const Worksheet = () => {
     setScore(null);
     setIsSubmitted(false);
     setShowNameAlert(false);
+    setSaveMessage('');
+  };
+
+  const toggleHighScores = () => {
+    setShowHighScores(!showHighScores);
+    if (!showHighScores && highScores.length === 0) {
+      fetchHighScores();
+    }
   };
 
   const getScoreColor = () => {
@@ -69,6 +139,14 @@ const Worksheet = () => {
     if (score >= 10) return 'Excellent! 👏';
     if (score >= 7) return 'Good job! 👍';
     return 'Keep practicing! 💪';
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
   };
 
   return (
@@ -100,6 +178,15 @@ const Worksheet = () => {
                   Please enter your name before submitting!
                 </div>
               )}
+              {saveMessage && (
+                <div className={`mt-2 p-2 rounded-lg text-sm animate-fade-in ${
+                  saveMessage.includes('successfully') 
+                    ? 'bg-green-100 border border-green-400 text-green-700' 
+                    : 'bg-red-100 border border-red-400 text-red-700'
+                }`}>
+                  {saveMessage}
+                </div>
+              )}
             </div>
             
             <div className="text-center">
@@ -114,7 +201,86 @@ const Worksheet = () => {
               )}
             </div>
           </div>
+          
+          {/* High Scores Button */}
+          <div className="mt-6 text-center">
+            <button
+              onClick={toggleHighScores}
+              className="px-6 py-2 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-white font-semibold rounded-lg transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl"
+            >
+              {showHighScores ? 'Hide High Scores' : 'Show High Scores'} 🏆
+            </button>
+          </div>
         </div>
+
+        {/* High Scores Section */}
+        {showHighScores && (
+          <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 animate-fade-in">
+            <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
+              🏆 High Scores
+            </h2>
+            
+            {isLoadingScores ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <p className="mt-2 text-gray-600">Loading high scores...</p>
+              </div>
+            ) : highScores.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200">
+                      <th className="pb-3 text-gray-700 font-semibold">Rank</th>
+                      <th className="pb-3 text-gray-700 font-semibold">Name</th>
+                      <th className="pb-3 text-gray-700 font-semibold">Score</th>
+                      <th className="pb-3 text-gray-700 font-semibold">Percentage</th>
+                      <th className="pb-3 text-gray-700 font-semibold">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {highScores.map((scoreEntry, index) => (
+                      <tr
+                        key={scoreEntry.id}
+                        className={`border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200 ${
+                          index < 3 ? 'bg-gradient-to-r from-yellow-50 to-orange-50' : ''
+                        }`}
+                      >
+                        <td className="py-3">
+                          <span className={`font-bold ${
+                            index === 0 ? 'text-yellow-600' :
+                            index === 1 ? 'text-gray-500' :
+                            index === 2 ? 'text-orange-600' :
+                            'text-gray-700'
+                          }`}>
+                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
+                          </span>
+                        </td>
+                        <td className="py-3 font-medium text-gray-800">{scoreEntry.name}</td>
+                        <td className="py-3">
+                          <span className="font-bold text-blue-600">{scoreEntry.score}/12</span>
+                        </td>
+                        <td className="py-3">
+                          <span className={`font-semibold ${
+                            scoreEntry.percentage >= 90 ? 'text-green-600' :
+                            scoreEntry.percentage >= 70 ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {scoreEntry.percentage}%
+                          </span>
+                        </td>
+                        <td className="py-3 text-gray-600 text-sm">{formatDate(scoreEntry.date)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>No high scores yet. Be the first to complete the worksheet!</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Questions Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -197,9 +363,10 @@ const Worksheet = () => {
           {!isSubmitted && (
             <button
               onClick={handleSubmit}
-              className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-lg transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl"
+              disabled={isSavingScore}
+              className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-lg transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Submit
+              {isSavingScore ? 'Submitting...' : 'Submit'}
             </button>
           )}
         </div>
